@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tech News Agent</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; background: #0b1020; color: #e8edff; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .card { background: #121935; padding: 1rem; border-radius: 12px; }
+    input, button { padding: .5rem; border-radius: 8px; border: 1px solid #2d376f; background: #0f1530; color: #e8edff; }
+    button { cursor: pointer; }
+    a { color: #8eb4ff; }
+    .article { border-top: 1px solid #2a3366; margin-top: .75rem; padding-top: .75rem; }
+    .muted { color: #a9b5ea; font-size: .9rem; }
+    textarea { width: 100%; min-height: 90px; background: #0f1530; color: #e8edff; border: 1px solid #2d376f; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Tech News Agent</h1>
+  <p class="muted">Add interests and RSS sources, run ingest, then discuss with your agent.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Add interest</h3>
+      <input id="interestName" placeholder="e.g. LLMs" />
+      <button onclick="addInterest()">Add</button>
+      <ul id="interests"></ul>
+    </div>
+
+    <div class="card">
+      <h3>Add source</h3>
+      <input id="sourceName" placeholder="e.g. Hacker News" />
+      <input id="sourceUrl" placeholder="RSS URL" style="width:100%; margin-top:.5rem;" />
+      <button onclick="addSource()" style="margin-top:.5rem;">Add</button>
+      <ul id="sources"></ul>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1rem;">
+    <h3>Ingest + News feed</h3>
+    <button onclick="ingest()">Run ingest</button>
+    <button onclick="loadArticles()">Refresh</button>
+    <div id="articles"></div>
+  </div>
+
+  <div class="card" style="margin-top:1rem;">
+    <h3>Discuss with agent</h3>
+    <textarea id="chatInput" placeholder="What happened this week in AI infra?"></textarea>
+    <button onclick="chat()">Ask</button>
+    <pre id="chatOutput" style="white-space: pre-wrap;"></pre>
+  </div>
+
+  <script>
+    async function api(path, opts = {}) {
+      const r = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    }
+
+    async function loadInterests() {
+      const data = await api('/interests');
+      document.getElementById('interests').innerHTML = data.map(i => `<li>${i.name}</li>`).join('');
+    }
+
+    async function addInterest() {
+      const name = document.getElementById('interestName').value;
+      if (!name) return;
+      await api('/interests', { method: 'POST', body: JSON.stringify({ name }) });
+      document.getElementById('interestName').value = '';
+      loadInterests();
+    }
+
+    async function loadSources() {
+      const data = await api('/sources');
+      document.getElementById('sources').innerHTML = data.map(s => `<li>${s.name} <span class="muted">${s.rss_url}</span></li>`).join('');
+    }
+
+    async function addSource() {
+      const name = document.getElementById('sourceName').value;
+      const rss_url = document.getElementById('sourceUrl').value;
+      if (!name || !rss_url) return;
+      await api('/sources', { method: 'POST', body: JSON.stringify({ name, rss_url }) });
+      document.getElementById('sourceName').value = '';
+      document.getElementById('sourceUrl').value = '';
+      loadSources();
+    }
+
+    async function ingest() {
+      const result = await api('/ingest/run', { method: 'POST' });
+      alert(`Ingest complete. Added ${result.added} article(s).`);
+      loadArticles();
+    }
+
+    async function loadArticles() {
+      const items = await api('/articles?limit=30&min_relevance=0.2');
+      const html = items.map(a => `
+        <div class="article">
+          <div><a href="${a.url}" target="_blank" rel="noreferrer">${a.title}</a></div>
+          <div class="muted">${a.source} · score ${Number(a.relevance_score).toFixed(2)}</div>
+          <div>${a.summary}</div>
+          <div><strong>Why it matters:</strong> ${a.why_it_matters}</div>
+          <div><strong>Question:</strong> ${a.question}</div>
+        </div>
+      `).join('');
+      document.getElementById('articles').innerHTML = html || '<p class="muted">No articles yet.</p>';
+    }
+
+    async function chat() {
+      const message = document.getElementById('chatInput').value;
+      if (!message) return;
+      const result = await api('/chat', { method: 'POST', body: JSON.stringify({ message }) });
+      document.getElementById('chatOutput').textContent = result.reply;
+    }
+
+    loadInterests();
+    loadSources();
+    loadArticles();
+  </script>
+</body>
+</html>
